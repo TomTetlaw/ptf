@@ -1,5 +1,61 @@
 #include "precompiled.h"
 
+void immediate_render_line(Vector2 a, Vector2 b, Vector4 colour) {
+    glColor4f(colour.x, colour.y, colour.z, colour.w);
+    
+    glBegin(GL_LINES);
+    glVertex2f(a.x, a.y);
+    glVertex2f(b.x, b.y);
+    glEnd();
+
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+}
+
+void immediate_render_box(Box box, Vector4 colour, bool fill) {
+    if(fill) {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    } else {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    }
+
+    glColor4f(colour.x, colour.y, colour.z, colour.w);
+
+    glBegin(GL_QUADS);
+    glVertex2f(box.x, box.y);
+    glVertex2f(box.x, box.y + box.height);
+    glVertex2f(box.x + box.width, box.y + box.height);
+    glVertex2f(box.x + box.width, box.y);
+    glEnd();
+
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+    if(fill) {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    }
+}
+
+
+void *memory_alloc(Game_Memory *memory, int size) {
+    assert(memory->used + size < memory->size);
+    void *location = (char *)memory->data + memory->used;
+    memory->used += size;
+    return location;
+}
+
+void arena_create(Game_Memory *memory, Memory_Arena *arena, int size) {
+    assert(memory->used + size < memory->size);
+    arena->address = (void *)((char *)memory->data + memory->used);
+    memory->used += size;
+    arena->size = size;
+}
+
+void *arena_alloc(Memory_Arena *arena, int size) {
+    assert(arena->used + size < arena->size);
+    void *location = (char *)arena->address + arena->used;
+    arena->used += size;
+    return location;
+}
+
 struct Game_State {
     float player_x;
     float player_y;
@@ -62,10 +118,11 @@ GAME_CALLBACK(game_render) {
     Game_State *state = (Game_State *)memory->data;
     wglMakeCurrent(imports->dc, imports->glrc);
 
-    glBegin(GL_QUADS);
-    glVertex2f(state->player_x, state->player_y);
-    glVertex2f(state->player_x, state->player_y + 100.0f);
-    glVertex2f(state->player_x + 100.0f, state->player_y + 100.0f);
-    glVertex2f(state->player_x + 100.0f, state->player_y);
-    glEnd();
+    Box player_box;
+    player_box.x = state->player_x;
+    player_box.y = state->player_y;
+    player_box.width = 100.0f;
+    player_box.height = 100.0f;
+
+    immediate_render_box(player_box, Vector4(1, 1, 1, 1), false);
 }

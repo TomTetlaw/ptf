@@ -229,4 +229,36 @@ struct Vector2 {
 	}
 };
 
+struct Box {
+	float x = 0.0f;
+	float y = 0.0f;
+	float width = 0.0f;
+	float height = 0.0f;
+};
+
+struct AABB {
+	float min_x = 0.0f;
+	float min_y = 0.0f;
+	float max_x = 0.0f;
+	float max_y = 0.0f;
+};
+
+inline Box aabb_to_box(AABB aabb) {
+	Box out;
+	out.x = aabb.min_x;
+	out.y = aabb.min_y;
+	out.width = aabb.max_x - aabb.min_x;
+	out.height = aabb.max_y - aabb.min_y;
+	return out;
+}
+
+inline AABB box_to_aabb(Box box) {
+	AABB out;
+	out.min_x = box.x;
+	out.min_y = box.y;
+	out.max_x = box.x + box.width;
+	out.max_y = box.y + box.height;
+	return out;
+}
+
 #endif

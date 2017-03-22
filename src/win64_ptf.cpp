@@ -79,10 +79,6 @@ void win32_check_for_new_dll(Game_Code *code) {
 	}
 }
 
-void *memory_alloc(Game_Memory *memory, int size);
-void arena_create(Game_Memory *memory, Memory_Arena *arena, int size);
-void *arena_alloc(Memory_Arena *arena, int size);
-
 void write_initial_game_state() {
     fwrite(&game_memory.used, sizeof(int), 1, recording_file);
     fwrite(game_memory.data, 1, game_memory.used, recording_file);
@@ -95,13 +91,53 @@ void read_initial_game_state() {
     fread(game_memory.data, 1, used, recording_file);
 }
 
-void test(float x, float y) {
-    glBegin(GL_QUADS);
-    glVertex2f(x, y);
-    glVertex2f(x, y + 100.0f);
-    glVertex2f(x + 100.0f, y + 100.0f);
-    glVertex2f(x + 100.0f, y);
-    glEnd();
+void handle_event(SDL_Event &ev) {
+    switch (ev.type) {
+    case SDL_QUIT:
+        sys.running = false;
+        break;
+    case SDL_KEYDOWN: {
+        bool ctrl_pressed = (ev.key.keysym.mod & KMOD_CTRL) > 0;
+        bool alt_pressed = (ev.key.keysym.mod & KMOD_ALT) > 0;
+        bool shift_pressed = (ev.key.keysym.mod & KMOD_SHIFT) > 0;
+        if (ev.key.keysym.scancode == SDL_SCANCODE_R && ctrl_pressed) {
+            if (is_recording) {
+                is_recording = false;
+                is_playing_back = true;
+                if (recording_file) {
+                    fclose(recording_file);
+                }
+                fopen_s(&recording_file, "data/recording.rc", "rb");
+                read_initial_game_state();
+            }
+            else {
+                is_playing_back = false;
+                is_recording = true;
+                if (recording_file) {
+                    fclose(recording_file);
+                }
+                fopen_s(&recording_file, "data/recording.rc", "wb");
+                write_initial_game_state();
+            }
+        }
+        else {
+            game_code.handle_key(&game_memory, &game_imports, ev.key.keysym.scancode, true);
+        }
+    } break;
+    case SDL_KEYUP:
+        game_code.handle_key(&game_memory, &game_imports, ev.key.keysym.scancode, false);
+        break;
+    case SDL_SYSWMEVENT:
+        if (ev.syswm.msg->msg.win.msg == WM_ACTIVATEAPP) {
+            if (ev.syswm.msg->msg.win.wParam) {
+                SDL_SetWindowOpacity(sys.window, 1.0f);
+            }
+            else {
+                SetWindowPos(sys.hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                SDL_SetWindowOpacity(sys.window, 0.4f);
+            }
+        } break;
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -127,10 +163,6 @@ int main(int argc, char *argv[]) {
     SDL_GetWindowWMInfo(sys.window, &info);
     game_imports.dc = info.info.win.hdc;
     game_imports.glrc = wglGetCurrentContext();
-    game_imports.memory_alloc = (memory_alloc_func *)memory_alloc;
-    game_imports.arena_create = (arena_create_func *)arena_create;
-    game_imports.arena_alloc = (arena_alloc_func *)arena_alloc;
-    game_imports.test = test;
     sys.hwnd = info.info.win.window;
 
     win32_load_game_dll(&game_code);
@@ -146,21 +178,11 @@ int main(int argc, char *argv[]) {
 	while (sys.running) {
 		SDL_Event ev;
 
-        SDL_PollEvent(&ev);
-
-        if(is_playing_back && recording_file) {
-            int valid = 0;
-            fread(&valid, sizeof(int), 1, recording_file);
-            if(valid) {
-                fread(&ev, sizeof(SDL_Event), 1, recording_file);
-            }
-
-            if(feof(recording_file)) {
-                fseek(recording_file, 0, SEEK_SET);
-                read_initial_game_state();
-            }
-        } else {
+        while(SDL_PollEvent(&ev)) {
             if(is_recording && recording_file) {
+                int event_here = 1;
+                fwrite(&event_here, sizeof(int), 1, recording_file);
+
                 int valid = 0;
                 if(ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP) {
                     if(ev.key.keysym.scancode == SDL_SCANCODE_W) {
@@ -178,52 +200,36 @@ int main(int argc, char *argv[]) {
                     fwrite(&ev, sizeof(SDL_Event), 1, recording_file);
                 }
             }
+
+            handle_event(ev);
         }
-                
-		switch (ev.type) {
-		case SDL_QUIT:
-			sys.running = false;
-    		break;
-        case SDL_KEYDOWN: {
-            bool ctrl_pressed = (ev.key.keysym.mod & KMOD_CTRL) > 0;
-			bool alt_pressed = (ev.key.keysym.mod & KMOD_ALT) > 0;
-			bool shift_pressed = (ev.key.keysym.mod & KMOD_SHIFT) > 0;
-            if(ev.key.keysym.scancode == SDL_SCANCODE_R && ctrl_pressed) {
-                if(is_recording) {
-                    is_recording = false;
-                    is_playing_back = true;
-                    if(recording_file) {
-                        fclose(recording_file);
-                    }
-                    fopen_s(&recording_file, "data/recording.rc", "rb");
+
+        if(is_recording && recording_file) {
+            int event_here = 0;
+            fwrite(&event_here, sizeof(int), 1, recording_file);
+        }
+
+        if(is_playing_back && recording_file) {
+            int event_here = 0;
+            while(true) {
+                fread(&event_here, sizeof(int), 1, recording_file);
+                if(!event_here) {
+                    break;
+                }
+
+                int valid = 0;
+                fread(&valid, sizeof(int), 1, recording_file);
+                if(valid) {
+                    fread(&ev, sizeof(SDL_Event), 1, recording_file);
+                    handle_event(ev);
+                }
+
+                if(feof(recording_file)) {
+                    fseek(recording_file, 0, SEEK_SET);
                     read_initial_game_state();
-                } else {
-                    is_playing_back = false;
-                    is_recording = true;
-                    if(recording_file) {
-                        fclose(recording_file);
-                    }
-                    fopen_s(&recording_file, "data/recording.rc", "wb");
-                    write_initial_game_state();
-                }
-            } else {
-                game_code.handle_key(&game_memory, &game_imports, ev.key.keysym.scancode, true);
-            }
-        } break;
-        case SDL_KEYUP:
-            game_code.handle_key(&game_memory, &game_imports, ev.key.keysym.scancode, false);
-            break;
-        case SDL_SYSWMEVENT:
-            if(ev.syswm.msg->msg.win.msg == WM_ACTIVATEAPP) {
-                if(ev.syswm.msg->msg.win.wParam) {
-                    SDL_SetWindowOpacity(sys.window, 1.0f);
-                } else {
-                    SetWindowPos(sys.hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-                    SDL_SetWindowOpacity(sys.window, 0.4f);
                 }
             }
-            break;
-		}
+        }
 
 		if (!sys.running) {
 			break;
@@ -231,7 +237,6 @@ int main(int argc, char *argv[]) {
 
         win32_check_for_new_dll(&game_code);
 
-        game_imports.keyboard_state = SDL_GetKeyboardState(nullptr);
         game_imports.real_time = SDL_GetTicks();
         game_code.update(&game_memory, &game_imports);
 

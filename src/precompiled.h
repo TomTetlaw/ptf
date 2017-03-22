@@ -24,6 +24,23 @@
 #pragma comment(lib, "../lib/glew32.lib")
 #pragma comment(lib, "opengl32.lib")
 
+#ifdef assert
+#undef assert
+#endif
+
+#define assert(x) {if(!(x)) *(int *)0 = 0; }
+
+#define GAME_CALLBACK_PARAMS Game_Memory *memory, Game_Imports *imports
+#define GAME_HANDLE_KEY_PARAMS GAME_CALLBACK_PARAMS, int key, bool down
+#define GAME_CALLBACK(name) extern "C" __declspec(dllexport) void name (GAME_CALLBACK_PARAMS)
+#define GAME_HANDLE_KEY_CALLBACK(name) extern "C" __declspec(dllexport) void name (GAME_HANDLE_KEY_PARAMS)
+
+#ifdef PTF_COMPILING_GAME
+#define PTF_EXPORT __declspec(dllimport)
+#else
+#define PTF_EXPORT __declspec(dllexport)
+#endif
+
 #include "mathlib.h"
 #include "system.h"
 #include "ptf.h"
