@@ -8,12 +8,6 @@ struct Game_Memory {
     bool is_initialized = false;
 };
 
-struct Memory_Arena {
-    void *address = nullptr;
-    int size = 0;
-    int used = 0;
-};
-
 struct Game_Imports {
     int real_time = 0;
     HDC dc = nullptr;
