@@ -49,7 +49,7 @@ void win32_alloc_memory(Game_Memory *memory) {
 }
 
 void win32_free_memory(Game_Memory *memory) {
-    VirtualFree(memory->data, memory->size, MEM_RELEASE);
+    VirtualFree(memory->data, 0, MEM_RELEASE);
 }
 
 void win32_open_find_notification() {
