@@ -3,9 +3,6 @@
 const char *game_dll_path = "game.dll";
 const char *game_temp_dll_path = "game_temp.dll";
 
-typedef void (*game_callback (GAME_CALLBACK_PARAMS));
-typedef void (*game_handle_key_callback(GAME_HANDLE_KEY_PARAMS));
-
 HANDLE find_notification;
 FILETIME last_file_time;
 
@@ -14,17 +11,22 @@ bool is_playing_back = false;
 
 FILE *recording_file = nullptr;
 
+Array<void *> textures_to_free;
+
+typedef void (*game_callback)(GAME_CALLBACK_PARAMS);
+typedef void (*game_handle_key_callback)(GAME_HANDLE_KEY_PARAMS);
+
 struct Game_Code {
     HMODULE game_dll_handle;
-    game_callback *init = nullptr;
-    game_callback *update = nullptr;
-    game_callback *render = nullptr;
-    game_handle_key_callback *handle_key = nullptr;
+    game_callback init = nullptr;
+    game_callback update = nullptr;
+    game_callback render = nullptr;
+    game_handle_key_callback handle_key = nullptr;
 };
 
- Game_Memory game_memory = {};
- Game_Code game_code = {};
- Game_Imports game_imports = {};
+Game_Memory game_memory = {};
+Game_Code game_code = {};
+Game_Imports game_imports = {};
 
 void win32_load_game_dll(Game_Code *code) {
     if(code->game_dll_handle) {
@@ -35,10 +37,10 @@ void win32_load_game_dll(Game_Code *code) {
 
     code->game_dll_handle = LoadLibrary(game_temp_dll_path);
     if(code->game_dll_handle) {
-        code->init = (game_callback *)GetProcAddress(code->game_dll_handle, "game_init");
-        code->update = (game_callback *)GetProcAddress(code->game_dll_handle, "game_update");
-        code->render = (game_callback *)GetProcAddress(code->game_dll_handle, "game_render");
-        code->handle_key = (game_handle_key_callback *)GetProcAddress(code->game_dll_handle, "game_handle_key");
+        code->init = (game_callback)GetProcAddress(code->game_dll_handle, "game_init");
+        code->update = (game_callback)GetProcAddress(code->game_dll_handle, "game_update");
+        code->render = (game_callback)GetProcAddress(code->game_dll_handle, "game_render");
+        code->handle_key = (game_handle_key_callback)GetProcAddress(code->game_dll_handle, "game_handle_key");
     }
 }
 
@@ -77,6 +79,49 @@ void win32_check_for_new_dll(Game_Code *code) {
 
         FindNextChangeNotification(find_notification);
 	}
+}
+
+Load_Texture_Result load_texture_from_file(const char *filename) {
+    Load_Texture_Result result;
+
+    SDL_Surface *surf = IMG_Load(filename);
+	if (!surf) {
+		return result;
+	}
+
+	if (surf->format->format != SDL_PIXELFORMAT_RGBA8888) {
+		SDL_PixelFormat format = { 0 };
+		format.BitsPerPixel = 32;
+		format.BytesPerPixel = 4;
+		format.format = SDL_PIXELFORMAT_RGBA8888;
+		format.Rshift = 0;
+		format.Gshift = 8;
+		format.Bshift = 16;
+		format.Ashift = 24;
+		format.Rmask = 0xff << format.Rshift;
+		format.Gmask = 0xff << format.Gshift;
+		format.Bmask = 0xff << format.Bshift;
+		format.Amask = 0xff << format.Ashift;
+
+		SDL_Surface *newSurf = SDL_ConvertSurface(surf, &format, 0);
+
+		SDL_FreeSurface(surf);
+		surf = newSurf;
+	}
+
+    int out_size = surf->w * surf->h * surf->format->BytesPerPixel;
+    char *out = new char[out_size];
+    memcpy_s(out, out_size, surf->pixels, out_size);
+
+    textures_to_free.append(out);
+
+    result.width = surf->w;
+    result.height = surf->h;
+    result.pixels = out;
+
+    SDL_FreeSurface(surf);
+
+    return result;
 }
 
 void write_initial_game_state() {
@@ -121,11 +166,11 @@ void handle_event(SDL_Event &ev) {
             }
         }
         else {
-            game_code.handle_key(&game_memory, &game_imports, ev.key.keysym.scancode, true);
+            (*game_code.handle_key)(&game_memory, &game_imports, ev.key.keysym.scancode, true);
         }
     } break;
     case SDL_KEYUP:
-        game_code.handle_key(&game_memory, &game_imports, ev.key.keysym.scancode, false);
+        (*game_code.handle_key)(&game_memory, &game_imports, ev.key.keysym.scancode, false);
         break;
     case SDL_SYSWMEVENT:
         if (ev.syswm.msg->msg.win.msg == WM_ACTIVATEAPP) {
@@ -163,6 +208,7 @@ int main(int argc, char *argv[]) {
     SDL_GetWindowWMInfo(sys.window, &info);
     game_imports.dc = info.info.win.hdc;
     game_imports.glrc = wglGetCurrentContext();
+    game_imports.load_texture_from_file = load_texture_from_file;
     sys.hwnd = info.info.win.window;
 
     win32_load_game_dll(&game_code);
@@ -171,8 +217,11 @@ int main(int argc, char *argv[]) {
     assert(game_code.render);
     assert(game_code.handle_key);
 
-    game_code.init(&game_memory, &game_imports);
-    
+    (*game_code.init)(&game_memory, &game_imports);
+    For(textures_to_free) {
+        delete[] (*it);
+    }
+
     SDL_EventState(SDL_SYSWMEVENT, SDL_ENABLE);
 
 	while (sys.running) {
@@ -238,12 +287,9 @@ int main(int argc, char *argv[]) {
         win32_check_for_new_dll(&game_code);
 
         game_imports.real_time = SDL_GetTicks();
-        game_code.update(&game_memory, &game_imports);
+        (*game_code.update)(&game_memory, &game_imports);
 
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        game_code.render(&game_memory, &game_imports);
+        (*game_code.render)(&game_memory, &game_imports);
         wglMakeCurrent(game_imports.dc, game_imports.glrc);
 
         SDL_GL_SwapWindow(sys.window);

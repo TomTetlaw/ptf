@@ -42,7 +42,8 @@
 #endif
 
 #include "mathlib.h"
-#include "system.h"
+#include "array.h"
 #include "ptf.h"
+#include "system.h"
 
 #endif

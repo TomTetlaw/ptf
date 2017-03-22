@@ -1,6 +1,9 @@
 #include "precompiled.h"
 #include "game.h"
 
+Game_Imports *imports = nullptr;
+Game_Memory *memory = nullptr;
+
 struct Game_State {
     float player_x;
     float player_y;
@@ -11,13 +14,25 @@ struct Game_State {
 
     float dt = 0.0f;
     float real_time = 0.0f;
+
+    Texture texture;
 };
 
 GAME_CALLBACK(game_init) {
+    ::imports = imports;
+    ::memory = memory;
+    memory->used = sizeof(Game_State);
+
     Game_State *state = (Game_State *)memory->data;
+
     state->player_x = 0;
     state->player_y = 0;
-    memory->used = sizeof(Game_State);
+
+    wglMakeCurrent(imports->dc, imports->glrc);
+
+    load_texture("data/textures/test.png", &state->texture);
+
+    glEnable(GL_TEXTURE_2D);
 }
 
 GAME_HANDLE_KEY_CALLBACK(game_handle_key) {
@@ -61,13 +76,11 @@ GAME_CALLBACK(game_update) {
 
 GAME_CALLBACK(game_render) {
     Game_State *state = (Game_State *)memory->data;
+
     wglMakeCurrent(imports->dc, imports->glrc);
 
-    Box player_box;
-    player_box.x = state->player_x;
-    player_box.y = state->player_y;
-    player_box.width = 100.0f;
-    player_box.height = 100.0f;
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
 
-    immediate_render_box(player_box, Vector4(1, 1, 1, 1), false);
+    immediate_render_texture(&state->texture, Vector2(state->player_x, state->player_y));
 }
