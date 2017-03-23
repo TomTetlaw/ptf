@@ -35,12 +35,6 @@
 #define GAME_CALLBACK(name) extern "C" __declspec(dllexport) void name (GAME_CALLBACK_PARAMS)
 #define GAME_HANDLE_KEY_CALLBACK(name) extern "C" __declspec(dllexport) void name (GAME_HANDLE_KEY_PARAMS)
 
-#ifdef PTF_COMPILING_GAME
-#define PTF_EXPORT __declspec(dllimport)
-#else
-#define PTF_EXPORT __declspec(dllexport)
-#endif
-
 #include "mathlib.h"
 #include "array.h"
 #include "ptf.h"
