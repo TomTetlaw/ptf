@@ -9,11 +9,10 @@ void load_texture(const char *filename, Texture *texture) {
     glBindTexture(GL_TEXTURE_2D, t);
 	glTextureParameteriEXT(t, GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTextureParameteriEXT(t, GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTextureParameteriEXT(t, GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
 	glTextureParameteriEXT(t, GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTextureParameteriEXT(t, GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glGenerateMipmap(GL_TEXTURE_2D);
-	glTexImage2D(t, 0, GL_RGBA, result.width, result.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, result.pixels);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, result.width, result.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, result.pixels);
 	glObjectLabel(GL_TEXTURE, t, -1, filename);
 
     texture->width = result.width;
@@ -59,9 +58,13 @@ void immediate_render_texture(Texture *texture, Vector2 position) {
     glBindTexture(GL_TEXTURE_2D, texture->api_object);
 
     glBegin(GL_QUADS);
+    glTexCoord2f(0, 0);
     glVertex2f(position.x, position.y);
+    glTexCoord2f(0, 1);
     glVertex2f(position.x, position.y + texture->height);
+    glTexCoord2f(1, 1);
     glVertex2f(position.x + texture->width, position.y + texture->height);
+    glTexCoord2f(1, 0);
     glVertex2f(position.x + texture->width, position.y);
     glEnd();
 }

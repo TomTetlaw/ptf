@@ -291,7 +291,7 @@ int main(int argc, char *argv[]) {
 
         (*game_code.render)(&game_memory, &game_imports);
         wglMakeCurrent(game_imports.dc, game_imports.glrc);
-
+        
         SDL_GL_SwapWindow(sys.window);
 	}
 

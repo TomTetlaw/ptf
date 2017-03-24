@@ -33,6 +33,9 @@ GAME_CALLBACK(game_init) {
     load_texture("data/textures/test.png", &state->texture);
 
     glEnable(GL_TEXTURE_2D);
+
+	glEnable(GL_BLEND); 
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 GAME_HANDLE_KEY_CALLBACK(game_handle_key) {
