@@ -3,6 +3,7 @@
 !*.h
 !*.cpp
 !*.bat
+!*.cap
 !*.gitignore
 
 !*/
