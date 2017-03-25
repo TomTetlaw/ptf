@@ -14,7 +14,7 @@ void system_init(int argc, char *argv[]) {
 	SDL_Rect rect;
 	SDL_GetDisplayBounds(0, &rect);
 
-	unsigned int flags = SDL_WINDOW_OPENGL | SDL_WINDOW_ALWAYS_ON_TOP;
+	unsigned int flags = SDL_WINDOW_OPENGL;
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "-width")) {
 			sys.window_size.x = (float)atoi(argv[i + 1]);

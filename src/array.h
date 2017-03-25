@@ -59,4 +59,9 @@ void Array<T, A>::append(const T &value) {
 	auto it = x.first(); \
 	for(int it_index = 0; it_index < x.num; it_index++, it = &x[it_index]) \
 
+#define For2(x, name) \
+	auto name = x.first(); \
+	for(int name##_index = 0; name##_index < x.num; name##_index++, it = &x[name##_index]) \
+
+
 #endif

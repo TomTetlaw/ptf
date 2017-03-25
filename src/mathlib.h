@@ -229,6 +229,10 @@ struct Vector2 {
 	}
 };
 
+inline Vector2 approach(Vector2 current, Vector2 goal, float dt) {
+	return Vector2(approach(current.x, goal.x, dt), approach(current.y, goal.y, dt));
+}
+
 struct Box {
 	float x = 0.0f;
 	float y = 0.0f;
@@ -259,6 +263,37 @@ inline AABB box_to_aabb(Box box) {
 	out.max_x = box.x + box.width;
 	out.max_y = box.y + box.height;
 	return out;
+}
+
+enum AABB_Inside_Direction {
+	AABB_OUTSIDE,
+	AABB_LEFT, 
+	AABB_RIGHT,
+	AABB_TOP, 
+	AABB_BOTTOM,
+};
+
+struct AABB_Inside_Result {
+	AABB_Inside_Direction direction = AABB_OUTSIDE;
+	bool is_inside = false;
+};
+
+//todo: this is totally broken
+inline AABB_Inside_Result aabb_inside(AABB a, AABB b) {
+	AABB_Inside_Result result;
+
+	if(a.max_x > b.min_x && a.min_x < b.max_x) {
+		result.direction = a.min_x - b.min_x > 0 ? AABB_LEFT : AABB_RIGHT;
+		result.is_inside = true;
+	} else if(a.max_y > b.min_y && a.min_y < b.max_y) {
+		result.direction = a.min_y - b.min_y > 0 ? AABB_TOP : AABB_BOTTOM;
+		result.is_inside = true;
+	} else {
+		result.direction = AABB_OUTSIDE;
+		result.is_inside = false;
+	}
+
+	return result;
 }
 
 #endif

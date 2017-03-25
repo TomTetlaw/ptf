@@ -174,7 +174,7 @@ void handle_event(SDL_Event &ev) {
         (*game_code.handle_key)(&game_memory, &game_imports, ev.key.keysym.scancode, false);
         break;
     case SDL_SYSWMEVENT:
-        if (ev.syswm.msg->msg.win.msg == WM_ACTIVATEAPP) {
+        /*if (ev.syswm.msg->msg.win.msg == WM_ACTIVATEAPP) {
             if (ev.syswm.msg->msg.win.wParam) {
                 SDL_SetWindowOpacity(sys.window, 1.0f);
             }
@@ -182,7 +182,7 @@ void handle_event(SDL_Event &ev) {
                 SetWindowPos(sys.hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                 SDL_SetWindowOpacity(sys.window, 0.4f);
             }
-        } break;
+        }*/ break;
     }
 }
 
