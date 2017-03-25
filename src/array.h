@@ -1,8 +1,19 @@
 #ifndef __ARRAY_H__
 #define __ARRAY_H__
 
-template<typename T>
+struct Default_Allocator {
+	void *alloc(int n) { 
+		return new char[n];
+	}
+
+	void dealloc(void *ptr) {
+		delete[] ptr;
+	}
+};
+
+template<typename T, typename A = Default_Allocator>
 struct Array {
+	A allocator;
 	T *data = nullptr;
 	int size = 0;
 	int num = 0;
@@ -15,29 +26,29 @@ struct Array {
 	T *first() { return &data[0]; }
 };
 
-template<typename T>
-Array<T>::~Array() {
-	delete[] data;
+template<typename T, typename A>
+Array<T, A>::~Array() {
+	allocator.dealloc(data);
 }
 
-template<typename T>
-void Array<T>::ensure_size(int new_size) {
+template<typename T, typename A>
+void Array<T, A>::ensure_size(int new_size) {
 	if (size >= new_size) {
 		return;
 	}
 
 	T *old_data = data;
-	data = new T[new_size];
+	data = (T *)allocator.alloc(new_size * sizeof(T));
 	memset(data, 0, sizeof(T) * new_size);
 	for (int i = 0; i < num; i++) {
 		data[i] = old_data[i];
 	}
-	delete[] old_data;
+	allocator.dealloc(old_data);
 	size = new_size;
 }
 
-template<typename T>
-void Array<T>::append(const T &value) {
+template<typename T, typename A>
+void Array<T, A>::append(const T &value) {
 	ensure_size(num + 1);
 
 	data[num] = value;

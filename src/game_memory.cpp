@@ -16,7 +16,8 @@ void arena_create(Game_Memory *memory, Memory_Arena *arena, int size) {
 }
 
 void *arena_alloc(Memory_Arena *arena, int size) {
-    assert(arena->used + size < arena->size);
+    assert(arena->used + size <= arena->size);
+
     void *location = (char *)arena->address + arena->used;
     arena->used += size;
     return location;

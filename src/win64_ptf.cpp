@@ -86,6 +86,7 @@ Load_Texture_Result load_texture_from_file(const char *filename) {
 
     SDL_Surface *surf = IMG_Load(filename);
 	if (!surf) {
+        printf("Failed to load texture %s: %s\n", filename, SDL_GetError());
 		return result;
 	}
 
