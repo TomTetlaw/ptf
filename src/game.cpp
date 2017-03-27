@@ -28,11 +28,76 @@ struct Entity {
     int parity = 0;
     int index = 0;
     const char *label = nullptr;
-    Vector2 position;
-    Vector2 velocity;
     Texture texture;
+    Vector2 size;
+    Vector2 half_size;
     Entity_Type type = ENTITY_BASE;
+
+    // tile map position
+    Vector2i tile_map_position;
+
+    // next,prev in world tile
+    Entity *next = nullptr;
+    Entity *prev = nullptr;
+
+    bool is_blocking = false;
 };
+
+void set_entity_texture(Entity *entity, const char *filename) {
+    assert(entity);
+    load_texture(filename, &entity->texture);
+    entity->size = Vector2((float)entity->texture.width, (float)entity->texture.height);
+    entity->size = Vector2(entity->size.x / 2, entity->size.y / 2);
+}
+
+#define MAX_TILES 256
+#define TILE_MAP_EXTRA 2*1024*1024
+
+struct World_Tile {
+    Entity *entities = nullptr;
+};
+
+struct Tile_Map_State {
+    World_Tile *tiles = nullptr;
+    int width = 0;
+    int height = 0;
+};
+
+void add_entity_to_tile(World_Tile *tile, Entity *entity) {
+    assert(tile);
+    if(tile->entities) {
+        entity->prev = tile->entities;
+        entity->next = nullptr;
+        tile->entities->next = entity;
+    } else {
+        tile->entities = entity;
+        entity->prev = nullptr;
+        entity->next = nullptr;
+    }
+}
+
+void remove_entity_from_tile(World_Tile *tile) {
+    assert(tile);
+
+    if(tile->entities->prev) {
+        tile->entities->prev->next = tile->entities->next;
+    }
+    if(tile->entities->next) {
+        tile->entities->next->prev = tile->entities->prev;
+    }
+}
+
+bool is_tile_blocking(World_Tile *tile) {
+    Entity *entity = tile->entities;
+    while(entity) {
+        if(entity->is_blocking) {
+            return true;
+        }
+        entity = entity->next;
+    }
+
+    return false;
+}
 
 struct Game_State {
     Entity *player = nullptr;
@@ -48,7 +113,16 @@ struct Game_State {
     Game_Allocator entities_allocator;
     Array<Entity, Game_Allocator> entities;
     int next_parity = 0;
+
+    Memory_Arena tile_map_arena;
+    Tile_Map_State tile_map_state;
 };
+
+World_Tile *get_world_tile(Game_State *state, Vector2i position) {
+    assert(position.x >= 0 && position.x < state->tile_map_state.width);
+    assert(position.y >= 0 && position.y < state->tile_map_state.height);
+    return &state->tile_map_state.tiles[position.x + position.y * state->tile_map_state.width];
+}
 
 struct Tile_Map {
     int width = 0;
@@ -81,7 +155,7 @@ Entity *create_entity(Game_State *state) {
 void setup_entity_player(Entity *entity) {
     entity->label = "player";
     entity->type = ENTITY_PLAYER;
-    load_texture("data/textures/player.png", &entity->texture);
+    set_entity_texture(entity, "data/textures/player.png");
 }
 
 GAME_CALLBACK(game_init) {
@@ -95,6 +169,8 @@ GAME_CALLBACK(game_init) {
     state->entities_allocator.arena = &state->entities_arena;
     state->entities.allocator = state->entities_allocator;
     state->entities.ensure_size(MAX_ENTITIES);
+
+    arena_create(memory, &state->tile_map_arena, (sizeof(World_Tile) * MAX_TILES) + TILE_MAP_EXTRA);
 
     wglMakeCurrent(imports->dc, imports->glrc);
     glEnable(GL_TEXTURE_2D);
@@ -111,40 +187,48 @@ GAME_CALLBACK(game_init) {
         "xxxxxxxxxx" \
         "x . . . .x" \
         "x        x" \
+        "x        x" \
         "x. . . . x" \
         "x        x" \
         "x   p    x" \
-        "x        x" \
         "x        x" \
         "x        x" \
         "xxxxxxxxxx";
 
     int w = map_test.width;
     int h = map_test.height;
+    state->tile_map_state.tiles = (World_Tile *)arena_alloc(&state->tile_map_arena, sizeof(World_Tile) * w * h);
+    state->tile_map_state.width = map_test.width;
+    state->tile_map_state.height = map_test.height;
+
     for(int y = 0; y < h; y++) {
         for(int x = 0; x < w; x++) {
             char c = map_test.string[x + (y * h)];
-            Vector2 position = Vector2((float)x * 64, (float)y * 64);
+            Vector2i tile_map_position = Vector2i(x, y);
             
             if(c == ' ') {
                 continue;
             } else if (c == 'p') {
-                state->player->position = position;
+                state->player->tile_map_position = tile_map_position;
                 continue;
             }
 
             Entity *entity = create_entity(state);
-            entity->position = position;
+            World_Tile *tile = &state->tile_map_state.tiles[x+y*h];
+            tile->entities = entity;
+
+            entity->tile_map_position = tile_map_position;
             switch(c) {
             case 'x':
                 entity->label = "wall";
                 entity->type = ENTITY_WALL;
-                load_texture("data/textures/wall.png", &entity->texture);
+                entity->is_blocking = true;
+                set_entity_texture(entity, "data/textures/wall.png");
                 break;
             case '.':
                 entity->label = "box";
                 entity->type = ENTITY_BOX;
-                load_texture("data/textures/box.png", &entity->texture);
+                set_entity_texture(entity, "data/textures/box.png");
                 break;
             }
         }
@@ -154,6 +238,10 @@ GAME_CALLBACK(game_init) {
 GAME_HANDLE_KEY_CALLBACK(game_handle_key) {
     Game_State *state = (Game_State *)memory->data;
     
+    if(!down) {
+        return;
+    }
+
     if(key == SDL_SCANCODE_W) {
         state->move_up = down;
     }
@@ -174,75 +262,43 @@ GAME_CALLBACK(game_update) {
     state->dt = (imports->real_time / 1000.0f) - state->real_time;
     state->real_time = imports->real_time / 1000.0f;
 
-    float speed = 100.0f;
-    
-    state->player->velocity = Vector2(0, 0);
+    for(int y = 0; y < state->tile_map_state.height; y++) {
+        for(int x = 0; x < state->tile_map_state.width; x++) {
+            state->tile_map_state.tiles[x + y * state->tile_map_state.width].entities = nullptr;
+        }
+    }
+
+    For(state->entities) {
+        int x = it->tile_map_position.x;
+        int y = it->tile_map_position.y;
+        add_entity_to_tile(&state->tile_map_state.tiles[x + y * state->tile_map_state.width], it);
+    }
+
+    Vector2i new_position = state->player->tile_map_position;
 
     if(state->move_up) {
-        state->player->velocity.y = -speed;
+        state->move_up = false;
+        new_position = new_position + Vector2i(0, -1);
     }
     if(state->move_down) {
-        state->player->velocity.y = speed;
+        state->move_down = false;
+        new_position = new_position + Vector2i(0, 1);
     }
     if(state->move_left) {
-        state->player->velocity.x = -speed;
+        state->move_left = false;
+        new_position = new_position + Vector2i(-1, 0);
     }
     if(state->move_right) {
-        state->player->velocity.x = speed;
+        state->move_right = false;
+        new_position = new_position + Vector2i(1, 0);
     }
-
-    /*For(state->entities)*/ {
-        Entity *it = state->player;
-        int it_index = state->player->index - 1;
-        Vector2 new_position = it->position + (it->velocity * state->dt);
-        bool hit_test = false;
-        AABB_Inside_Result result;
-
-        AABB a;
-        a.min_x = new_position.x;
-        a.min_y = new_position.y;
-        a.max_x = new_position.x + it->texture.width;
-        a.max_y = new_position.y + it->texture.height;
-
-        for(int other_index = 0; other_index < state->entities.num; other_index++) {
-            if(it_index == other_index) {
-                continue;
-            }
-
-            Entity *other = &state->entities[other_index];
     
-            AABB b;
-            b.min_x = other->position.x;
-            b.min_y = other->position.y;
-            b.max_x = other->position.x + other->texture.width;
-            b.max_y = other->position.y + other->texture.height;
-
-            result = aabb_inside(a, b);
-            if(result.is_inside) {
-                break;
-            }
+    if(new_position != state->player->tile_map_position) {
+        World_Tile *tile = get_world_tile(state, new_position);
+        if(!is_tile_blocking(tile)) {
+            state->player->tile_map_position = new_position;
         }
-        
-        if(result.is_inside) {
-            switch(result.direction) {
-            case AABB_LEFT:
-                printf("left\n");
-                break;
-            case AABB_RIGHT:
-                printf("right\n");
-                break;
-            case AABB_TOP:
-                printf("top\n");
-                break;
-            case AABB_BOTTOM:
-                printf("bottom\n");
-                break;
-            }
-        } else {
-            printf("not inside\n");
-            it->position = it->position + (it->velocity * state->dt);
-        }
-     }
+    }
 }
 
 GAME_CALLBACK(game_render) {
@@ -255,6 +311,6 @@ GAME_CALLBACK(game_render) {
 
     For(state->entities) {
         Entity *entity = it;
-        immediate_render_texture(&it->texture, it->position);
+        immediate_render_texture(&it->texture, Vector2(it->tile_map_position.x * 64.0f, it->tile_map_position.y * 64.0f));
     }
 }

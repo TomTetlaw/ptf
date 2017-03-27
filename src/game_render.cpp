@@ -40,11 +40,13 @@ void immediate_render_box(Box box, Vector4 colour, bool fill) {
 
     glColor4f(colour.x, colour.y, colour.z, colour.w);
 
+    Vector2 half = Vector2(box.width / 2, box.height / 2);
+
     glBegin(GL_QUADS);
-    glVertex2f(box.x, box.y);
-    glVertex2f(box.x, box.y + box.height);
-    glVertex2f(box.x + box.width, box.y + box.height);
-    glVertex2f(box.x + box.width, box.y);
+    glVertex2f(box.x - half.x, box.y - half.y);
+    glVertex2f(box.x - half.x, box.y + half.y);
+    glVertex2f(box.x + half.x, box.y + half.y);
+    glVertex2f(box.x + half.x, box.y - half.y);
     glEnd();
 
     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
@@ -57,14 +59,16 @@ void immediate_render_box(Box box, Vector4 colour, bool fill) {
 void immediate_render_texture(Texture *texture, Vector2 position) {
     glBindTexture(GL_TEXTURE_2D, texture->api_object);
 
+    Vector2 half = Vector2((float)texture->width / 2, (float)texture->height / 2);
+
     glBegin(GL_QUADS);
     glTexCoord2f(0, 0);
-    glVertex2f(position.x, position.y);
+    glVertex2f(position.x - half.x, position.y - half.y);
     glTexCoord2f(0, 1);
-    glVertex2f(position.x, position.y + texture->height);
+    glVertex2f(position.x - half.x, position.y + half.y);
     glTexCoord2f(1, 1);
-    glVertex2f(position.x + texture->width, position.y + texture->height);
+    glVertex2f(position.x + half.x, position.y + half.y);
     glTexCoord2f(1, 0);
-    glVertex2f(position.x + texture->width, position.y);
+    glVertex2f(position.x + half.x, position.y - half.y);
     glEnd();
 }

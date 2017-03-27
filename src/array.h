@@ -21,6 +21,7 @@ struct Array {
 	~Array();
 	void ensure_size(int new_size);
 	void append(const T &value);
+	T *alloc();
 	T &operator[](int index) { return data[index]; }
 
 	T *first() { return &data[0]; }
@@ -55,13 +56,21 @@ void Array<T, A>::append(const T &value) {
 	num += 1;
 }
 
+template<typename T, typename A>
+T *Array<T, A>::alloc() {
+	ensure_size(num + 1);
+	T *out = &data[num];
+	num += 1;
+	return out;
+}
+
 #define For(x) \
 	auto it = x.first(); \
 	for(int it_index = 0; it_index < x.num; it_index++, it = &x[it_index]) \
 
 #define For2(x, name) \
 	auto name = x.first(); \
-	for(int name##_index = 0; name##_index < x.num; name##_index++, it = &x[name##_index]) \
+	for(int name##_index = 0; name##_index < x.num; name##_index++, name = &x[name##_index]) \
 
 
 #endif
