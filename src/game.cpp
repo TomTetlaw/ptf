@@ -50,7 +50,7 @@ void set_entity_texture(Entity *entity, const char *filename) {
     entity->size = Vector2(entity->size.x / 2, entity->size.y / 2);
 }
 
-#define MAX_TILES 256
+#define MAX_TILES 1024
 #define TILE_MAP_EXTRA 2*1024*1024
 
 struct World_Tile {
@@ -63,6 +63,7 @@ struct Tile_Map_State {
     int height = 0;
 };
 
+//todo: sort entities by Z
 void add_entity_to_tile(World_Tile *tile, Entity *entity) {
     assert(tile);
     if(tile->entities) {
@@ -181,31 +182,34 @@ GAME_CALLBACK(game_init) {
     setup_entity_player(state->player);
 
     Tile_Map map_test;
-    map_test.width = 10;
+    map_test.width = 20;
     map_test.height = 10;
     map_test.string =
-        "xxxxxxxxxx" \
-        "x . . . .x" \
-        "x        x" \
-        "x        x" \
-        "x. . . . x" \
-        "x        x" \
-        "x   p    x" \
-        "x        x" \
-        "x        x" \
-        "xxxxxxxxxx";
+        "xxxxxxxxxxxxxxxxxxxx" \
+        "x . . . .          x" \
+        "x                  x" \
+        "x                  x" \
+        "x. . . .           x" \
+        "x                  x" \
+        "x   p              x" \
+        "x                  x" \
+        "x                  x" \
+        "xxxxxxxxxxxxxxxxxxxx";
 
-    int w = map_test.width;
-    int h = map_test.height;
-    state->tile_map_state.tiles = (World_Tile *)arena_alloc(&state->tile_map_arena, sizeof(World_Tile) * w * h);
     state->tile_map_state.width = map_test.width;
     state->tile_map_state.height = map_test.height;
+    state->tile_map_state.tiles = (World_Tile *)arena_alloc(&state->tile_map_arena, 
+        sizeof(World_Tile) * (state->tile_map_state.width * state->tile_map_state.height));
 
-    for(int y = 0; y < h; y++) {
-        for(int x = 0; x < w; x++) {
-            char c = map_test.string[x + (y * h)];
+    for(int y = 0; y < state->tile_map_state.height; y++) {
+        for(int x = 0; x < state->tile_map_state.width; x++) {
+            int index = x + (y * state->tile_map_state.width);
+            char c = map_test.string[index];
+            printf("%c\n",c);
             Vector2i tile_map_position = Vector2i(x, y);
             
+            assert(c >= 32);
+
             if(c == ' ') {
                 continue;
             } else if (c == 'p') {
@@ -214,7 +218,7 @@ GAME_CALLBACK(game_init) {
             }
 
             Entity *entity = create_entity(state);
-            World_Tile *tile = &state->tile_map_state.tiles[x+y*h];
+            World_Tile *tile = &state->tile_map_state.tiles[index];
             tile->entities = entity;
 
             entity->tile_map_position = tile_map_position;
@@ -264,14 +268,14 @@ GAME_CALLBACK(game_update) {
 
     for(int y = 0; y < state->tile_map_state.height; y++) {
         for(int x = 0; x < state->tile_map_state.width; x++) {
-            state->tile_map_state.tiles[x + y * state->tile_map_state.width].entities = nullptr;
+            state->tile_map_state.tiles[x + (y * state->tile_map_state.width)].entities = nullptr;
         }
     }
 
     For(state->entities) {
         int x = it->tile_map_position.x;
         int y = it->tile_map_position.y;
-        add_entity_to_tile(&state->tile_map_state.tiles[x + y * state->tile_map_state.width], it);
+        add_entity_to_tile(&state->tile_map_state.tiles[x + (y * state->tile_map_state.width)], it);
     }
 
     Vector2i new_position = state->player->tile_map_position;
@@ -309,8 +313,15 @@ GAME_CALLBACK(game_render) {
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    For(state->entities) {
-        Entity *entity = it;
-        immediate_render_texture(&it->texture, Vector2(it->tile_map_position.x * 64.0f, it->tile_map_position.y * 64.0f));
+    for(int y = 0; y < state->tile_map_state.height; y++) {
+        for(int x = 0; x < state->tile_map_state.width; x++) {
+            World_Tile *tile = &state->tile_map_state.tiles[x + (y * state->tile_map_state.width)];
+            
+            Entity *entity = tile->entities;
+            while(entity) {
+                immediate_render_texture(&entity->texture, v2_to_v2i(entity->tile_map_position, 64));
+                entity = entity->next;
+            }
+        }
     }
 }

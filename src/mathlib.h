@@ -255,6 +255,10 @@ struct Vector2i {
 	}
 };
 
+inline Vector2 v2_to_v2i(Vector2i v, float scale = 1.0f) {
+	return Vector2(v.x * scale, v.y * scale);
+}
+
 struct Box {
 	float x = 0.0f;
 	float y = 0.0f;
