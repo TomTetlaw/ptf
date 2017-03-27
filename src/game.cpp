@@ -359,11 +359,11 @@ GAME_CALLBACK(game_update) {
                         push_dir.y = -1;
                     }
 
-                    Vector2i resulting_position = entity->tile_map_position + push_dir;
+                    Vector2i resulting_position = b + push_dir;
                     World_Tile *push_to_tile = get_world_tile(state, resulting_position);
 
                     if(!tile_is_blocking(push_to_tile) && !tile_blocks_push(push_to_tile)) {
-                        state->player->tile_map_position = state->player->tile_map_position + push_dir;
+                        state->player->tile_map_position = a + push_dir;
                         entity->tile_map_position = resulting_position;
 
                         if(tile_is_goal(push_to_tile)) {
@@ -383,11 +383,6 @@ GAME_CALLBACK(game_update) {
     }
 }
 
-/*
-void qsort (void* base, size_t num, size_t size,
-            int (*compar)(const void*,const void*));
-*/
-
 int sort_entity_by_z(const void *a, const void *b) {
     return ((Entity *)a)->z - ((Entity *)b)->z;
 }
@@ -400,18 +395,7 @@ GAME_CALLBACK(game_render) {
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    /*for(int y = 0; y < state->tile_map_state.height; y++) {
-        for(int x = 0; x < state->tile_map_state.width; x++) {
-            World_Tile *tile = &state->tile_map_state.tiles[x + (y * state->tile_map_state.width)];
-            
-            Entity *entity = tile->entities;
-            while(entity) {
-                immediate_render_texture(&entity->texture, v2_to_v2i(entity->tile_map_position, 64), entity->colour);
-                entity = entity->next;
-            }
-        }
-    }*/
-
+    // @hack should put this in Game_State and allocate in game_init
     static Entity *sorted_entities = (Entity *)arena_alloc(&state->entities_arena, sizeof(Entity) * state->entities.num);
     memcpy(sorted_entities, state->entities.data, sizeof(Entity) * state->entities.num);
     qsort(sorted_entities, state->entities.num, sizeof(Entity), sort_entity_by_z);
