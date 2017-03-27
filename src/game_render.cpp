@@ -27,8 +27,6 @@ void immediate_render_line(Vector2 a, Vector2 b, Vector4 colour) {
     glVertex2f(a.x, a.y);
     glVertex2f(b.x, b.y);
     glEnd();
-
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 }
 
 void immediate_render_box(Box box, Vector4 colour, bool fill) {
@@ -49,17 +47,17 @@ void immediate_render_box(Box box, Vector4 colour, bool fill) {
     glVertex2f(box.x + half.x, box.y - half.y);
     glEnd();
 
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-
     if(fill) {
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     }
 }
 
-void immediate_render_texture(Texture *texture, Vector2 position) {
+void immediate_render_texture(Texture *texture, Vector2 position, Vector4 colour) {
     glBindTexture(GL_TEXTURE_2D, texture->api_object);
 
     Vector2 half = Vector2((float)texture->width / 2, (float)texture->height / 2);
+
+    glColor4f(colour.x, colour.y, colour.z, colour.w);
 
     glBegin(GL_QUADS);
     glTexCoord2f(0, 0);

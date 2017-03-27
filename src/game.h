@@ -12,7 +12,7 @@ struct Texture {
 
 void load_texture(const char *filename, Texture *texture);
 
-void immediate_render_texture(Texture *texture, Vector2 position);
+void immediate_render_texture(Texture *texture, Vector2 position, Vector4 colour);
 void immediate_render_line(Vector2 a, Vector2 b, Vector4 colour);
 void immediate_render_box(Box box, Vector4 colour, bool fill);
 
