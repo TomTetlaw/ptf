@@ -383,7 +383,7 @@ GAME_CALLBACK(game_init) {
     Tile_Map *map0 = (Tile_Map *)arena_alloc(&state->tile_map_arena, sizeof(Tile_Map));
     map_add_string(map0, "xxxxxxxxxx");
     map_add_string(map0, "x        x");
-    map_add_string(map0, "xp    xxex");
+    map_add_string(map0, "xp.   xxex");
     map_add_string(map0, "x . s  d x");
     map_add_string(map0, "xxxxxxxxxx");
     state->maps.append(map0);
