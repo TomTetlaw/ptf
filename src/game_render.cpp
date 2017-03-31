@@ -1,7 +1,7 @@
 #include "precompiled.h"
 #include "game.h"
 
-void load_texture(const char *filename, Texture *texture) {
+void load_texture(Game_Imports *imports, const char *filename, Texture *texture) {
     Load_Texture_Result result = imports->load_texture_from_file(filename);
 
 	unsigned int t;
@@ -18,6 +18,7 @@ void load_texture(const char *filename, Texture *texture) {
     texture->width = result.width;
     texture->height = result.height;
     texture->api_object = t;
+    texture->filename = filename;
 }
 
 void immediate_render_line(Vector2 a, Vector2 b, Vector4 colour) {

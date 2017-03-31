@@ -1,9 +1,6 @@
 #include "precompiled.h"
 #include "game.h"
 
-Game_Imports *imports = nullptr;
-Game_Memory *memory = nullptr;
-
 struct Game_Allocator {
     Memory_Arena *arena = nullptr;
 
@@ -23,6 +20,9 @@ enum Entity_Type {
     ENTITY_BOX,
     ENTITY_WALL,
     ENTITY_GOAL,
+    ENTITY_PAD,
+    ENTITY_EXIT,
+    ENTITY_DOOR,
 };
 
 struct Entity {
@@ -45,14 +45,15 @@ struct Entity {
     Entity *next = nullptr;
     Entity *prev = nullptr;
 
+    // tile flags @note should they be actual bit flags?
     bool is_blocking = false;
     bool is_pushable = false;
     bool blocks_push = false;
 };
 
-void set_entity_texture(Entity *entity, const char *filename) {
+void set_entity_texture(Game_Imports *imports, Entity *entity, const char *filename) {
     assert(entity);
-    load_texture(filename, &entity->texture);
+    load_texture(imports, filename, &entity->texture);
     entity->size = Vector2((float)entity->texture.width, (float)entity->texture.height);
     entity->size = Vector2(entity->size.x / 2, entity->size.y / 2);
 }
@@ -64,15 +65,24 @@ struct World_Tile {
     Entity *entities = nullptr;
 };
 
+#define MAX_GOALS 8
+
 struct Tile_Map_State {
     World_Tile *tiles = nullptr;
     int width = 0;
     int height = 0;
+
+    Entity *door = nullptr;
+    Entity *pad = nullptr;
+    Entity *exit = nullptr;
+    World_Tile *goals[MAX_GOALS];
+    int num_goals = 0;
 };
 
 //todo: sort entities by Z
 void add_entity_to_tile(World_Tile *tile, Entity *entity) {
     assert(tile);
+
     if(tile->entities) {
         entity->prev = tile->entities;
         entity->next = nullptr;
@@ -97,6 +107,7 @@ void remove_entity_from_tile(World_Tile *tile) {
 
 bool tile_is_blocking(World_Tile *tile) {
     Entity *entity = tile->entities;
+
     while(entity) {
         if(entity->is_blocking) {
             return true;
@@ -107,8 +118,35 @@ bool tile_is_blocking(World_Tile *tile) {
     return false;
 }
 
+bool tile_has_box(World_Tile *tile) {
+    Entity *entity = tile->entities;
+
+    while(entity) {
+        if(entity->type == ENTITY_BOX) {
+            return true;
+        }
+        entity = entity->next;
+    }
+
+    return false;  
+}
+
+bool tile_has_player(World_Tile *tile) {
+    Entity *entity = tile->entities;
+
+    while(entity) {
+        if(entity->type == ENTITY_PLAYER) {
+            return true;
+        }
+        entity = entity->next;
+    }
+
+    return false;      
+}
+
 bool tile_is_goal(World_Tile *tile) {
-     Entity *entity = tile->entities;
+    Entity *entity = tile->entities;
+
     while(entity) {
         if(entity->type == ENTITY_GOAL) {
             return true;
@@ -119,8 +157,22 @@ bool tile_is_goal(World_Tile *tile) {
     return false;   
 }
 
+bool tile_is_pad(World_Tile *tile) {
+    Entity *entity = tile->entities;
+
+    while(entity) {
+        if(entity->type == ENTITY_PAD) {
+            return true;
+        }
+        entity = entity->next;
+    }
+
+    return false;   
+}
+
 bool tile_blocks_push(World_Tile *tile) {
-     Entity *entity = tile->entities;
+    Entity *entity = tile->entities;
+
     while(entity) {
         if(entity->blocks_push) {
             return true;
@@ -130,6 +182,24 @@ bool tile_blocks_push(World_Tile *tile) {
 
     return false;   
 }
+
+int tile_count_entities(World_Tile *tile) {
+    int count = 0;
+    Entity *entity = tile->entities;
+
+    while(entity) {
+        count++;
+        entity = entity->next;
+    }
+
+    return count;
+}
+
+struct Tile_Map {
+    int width = 0;
+    int height = 0;
+    Array<const char *> strings;
+};
 
 struct Game_State {
     Entity *player = nullptr;
@@ -144,10 +214,15 @@ struct Game_State {
     Memory_Arena entities_arena;
     Game_Allocator entities_allocator;
     Array<Entity, Game_Allocator> entities;
+    Entity *sorted_entities = nullptr;
     int next_parity = 0;
 
     Memory_Arena tile_map_arena;
+    Game_Allocator tile_map_allocator;
     Tile_Map_State tile_map_state;
+
+    Array<Tile_Map *, Game_Allocator> maps;
+    int current_map = 0;
 };
 
 World_Tile *get_world_tile(Game_State *state, Vector2i position) {
@@ -156,11 +231,15 @@ World_Tile *get_world_tile(Game_State *state, Vector2i position) {
     return &state->tile_map_state.tiles[position.x + position.y * state->tile_map_state.width];
 }
 
-struct Tile_Map {
-    int width = 0;
-    int height = 0;
-    const char *string = nullptr;
-};
+void map_add_string(Tile_Map *map, const char *string) {
+    int len = (int)strlen(string);
+    if(len > map->width) {
+        map->width = len;
+    }
+
+    map->height += 1;
+    map->strings.append(string);
+}
 
 Entity *create_entity(Game_State *state) {
     int index = 0;
@@ -185,62 +264,38 @@ Entity *create_entity(Game_State *state) {
     return entity;
 }
 
-void setup_entity_player(Entity *entity) {
+void delete_all_entities(Game_State *state) {
+    For(state->entities) {
+        *it = Entity();
+    }
+    state->entities.num = 0;
+    state->next_parity = 0;
+}
+
+void setup_entity_player(Game_Imports *imports, Entity *entity) {
     entity->label = "player";
     entity->type = ENTITY_PLAYER;
     entity->z = 3;
-    set_entity_texture(entity, "data/textures/player.png");
+    set_entity_texture(imports, entity, "data/textures/player.png");
 }
 
-Tile_Map map_test;
+void load_map(Game_Imports *imports, Game_State *state, Tile_Map *map) {
+    state->tile_map_state.width = map->width;
+    state->tile_map_state.height = map->height;
+    state->tile_map_state.pad = nullptr;
+    state->tile_map_state.door = nullptr;
+    state->tile_map_state.exit = nullptr;
+    state->tile_map_state.num_goals = 0;
 
-GAME_CALLBACK(game_init) {
-    ::imports = imports;
-    ::memory = memory;
-    memory->used = sizeof(Game_State);
-
-    Game_State *state = (Game_State *)memory->data;
-
-    arena_create(memory, &state->entities_arena, (sizeof(Entity) * MAX_ENTITIES) * 2);
-    state->entities_allocator.arena = &state->entities_arena;
-    state->entities.allocator = state->entities_allocator;
-    state->entities.ensure_size(MAX_ENTITIES);
-
-    arena_create(memory, &state->tile_map_arena, (sizeof(World_Tile) * MAX_TILES) + TILE_MAP_EXTRA);
-
-    wglMakeCurrent(imports->dc, imports->glrc);
-    glEnable(GL_TEXTURE_2D);
-	glEnable(GL_BLEND); 
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    delete_all_entities(state);
 
     state->player = create_entity(state);
-    setup_entity_player(state->player);
-
-    map_test.width = 8;
-    map_test.height = 8;
-    map_test.string =
-    "xxxxxxxx" \
-    "x   x  x" \
-    "x x x.gx" \
-    "x    .gx" \
-    "x x x.gx" \
-    "x   x  x" \
-    "xxxxxp x" \
-    "    xxxx";
-
-    state->tile_map_state.width = map_test.width;
-    state->tile_map_state.height = map_test.height;
-    state->tile_map_state.tiles = (World_Tile *)arena_alloc(&state->tile_map_arena, 
-        sizeof(World_Tile) * (state->tile_map_state.width * state->tile_map_state.height));
+    setup_entity_player(imports, state->player);
 
     for(int y = 0; y < state->tile_map_state.height; y++) {
         for(int x = 0; x < state->tile_map_state.width; x++) {
-            int index = x + (y * state->tile_map_state.width);
-            char c = map_test.string[index];
-            printf("%c\n",c);
+            char c = map->strings[y][x];
             Vector2i tile_map_position = Vector2i(x, y);
-            
-            assert(c >= 32);
 
             if(c == ' ') {
                 continue;
@@ -250,7 +305,7 @@ GAME_CALLBACK(game_init) {
             }
 
             Entity *entity = create_entity(state);
-            World_Tile *tile = &state->tile_map_state.tiles[index];
+            World_Tile *tile = &state->tile_map_state.tiles[x + (y * state->tile_map_state.width)];
             tile->entities = entity;
 
             entity->tile_map_position = tile_map_position;
@@ -260,7 +315,7 @@ GAME_CALLBACK(game_init) {
                 entity->type = ENTITY_WALL;
                 entity->is_blocking = true;
                 entity->z = 0;
-                set_entity_texture(entity, "data/textures/wall.png");
+                set_entity_texture(imports, entity, "data/textures/wall.png");
                 break;
             case '.':
                 entity->label = "box";
@@ -268,17 +323,83 @@ GAME_CALLBACK(game_init) {
                 entity->is_pushable = true;
                 entity->blocks_push = true;
                 entity->z = 2;
-                set_entity_texture(entity, "data/textures/box.png");
+                set_entity_texture(imports, entity, "data/textures/box.png");
                 break;
             case 'g':
                 entity->label = "goal";
                 entity->type = ENTITY_GOAL;
                 entity->z = 1;
-                set_entity_texture(entity, "data/textures/goal.png");
+                set_entity_texture(imports, entity, "data/textures/goal.png");
+                assert(state->tile_map_state.num_goals < MAX_GOALS);
+                state->tile_map_state.goals[state->tile_map_state.num_goals++] = tile;
+                break;
+            case 's':
+                entity->label = "pad";
+                entity->type = ENTITY_PAD;
+                entity->z = 1;
+                set_entity_texture(imports, entity, "data/textures/pad.png");
+                state->tile_map_state.pad = entity;
+                break;
+            case 'e':
+                entity->label = "exit";
+                entity->type = ENTITY_EXIT;
+                entity->z = 1;
+                set_entity_texture(imports, entity, "data/textures/exit.png");
+                state->tile_map_state.exit = entity;
+                break;
+            case 'd':
+                entity->label = "door";
+                entity->type = ENTITY_DOOR;
+                entity->z = 1;
+                entity->is_blocking = true;
+                state->tile_map_state.door = entity;
+                set_entity_texture(imports, entity, "data/textures/door_closed.png");
                 break;
             }
         }
     }
+}
+
+GAME_CALLBACK(game_init) {
+    memory->used = sizeof(Game_State);
+
+    Game_State *state = (Game_State *)memory->data;
+
+    arena_create(memory, &state->entities_arena, (sizeof(Entity) * MAX_ENTITIES) * 2);
+    state->entities_allocator.arena = &state->entities_arena;
+    state->entities.allocator = state->entities_allocator;
+    state->entities.ensure_size(MAX_ENTITIES);
+    arena_create(memory, &state->tile_map_arena, (sizeof(World_Tile) * MAX_TILES) + TILE_MAP_EXTRA);
+    state->sorted_entities = (Entity *)arena_alloc(&state->entities_arena, sizeof(Entity) * MAX_ENTITIES);
+    state->tile_map_state.tiles = (World_Tile *)arena_alloc(&state->tile_map_arena, sizeof(World_Tile) * MAX_TILES);
+    state->tile_map_allocator.arena = &state->tile_map_arena;
+    state->maps.allocator = state->tile_map_allocator;
+
+    wglMakeCurrent(imports->dc, imports->glrc);
+    glEnable(GL_TEXTURE_2D);
+	glEnable(GL_BLEND); 
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    Tile_Map *map0 = (Tile_Map *)arena_alloc(&state->tile_map_arena, sizeof(Tile_Map));
+    map_add_string(map0, "xxxxxxxxxx");
+    map_add_string(map0, "x        x");
+    map_add_string(map0, "xp    xxex");
+    map_add_string(map0, "x . s  d x");
+    map_add_string(map0, "xxxxxxxxxx");
+    state->maps.append(map0);
+
+    Tile_Map *map1 = (Tile_Map *)arena_alloc(&state->tile_map_arena, sizeof(Tile_Map));
+    map_add_string(map1, "xxxxxxxx");
+    map_add_string(map1, "x   x  x");
+    map_add_string(map1, "x x x.gx");
+    map_add_string(map1, "x    .gx");
+    map_add_string(map1, "x x x.gx");
+    map_add_string(map1, "x   x  x");
+    map_add_string(map1, "xxxxxp x");
+    map_add_string(map1, "    xxxx");
+    state->maps.append(map1);
+
+    load_map(imports, state, state->maps[0]);
 }
 
 GAME_HANDLE_KEY_CALLBACK(game_handle_key) {
@@ -288,17 +409,33 @@ GAME_HANDLE_KEY_CALLBACK(game_handle_key) {
         return;
     }
 
-    if(key == SDL_SCANCODE_W) {
+    switch(key) {
+    case SDL_SCANCODE_W:
         state->move_up = down;
-    }
-    if(key == SDL_SCANCODE_S) {
+        break;
+    case SDL_SCANCODE_S:
         state->move_down = down;
-    }
-    if(key == SDL_SCANCODE_A) {
+        break;
+    case SDL_SCANCODE_A:
         state->move_left = down;
-    }
-    if(key == SDL_SCANCODE_D) {
+        break;
+    case SDL_SCANCODE_D:
         state->move_right = down;
+        break;
+    case SDL_SCANCODE_LEFT:
+        state->current_map--;
+        if(state->current_map < 0) {
+            state->current_map = state->maps.num - 1;
+        }
+        load_map(imports, state, state->maps[state->current_map]);
+        break;
+    case SDL_SCANCODE_RIGHT:
+        state->current_map++;
+        if(state->current_map >= state->maps.num) {
+            state->current_map = 0;
+        }
+        load_map(imports, state, state->maps[state->current_map]);
+        break;
     }
 }
 
@@ -381,6 +518,44 @@ GAME_CALLBACK(game_update) {
             }
         }
     }
+
+    if(state->tile_map_state.pad) {
+        int count = tile_count_entities(get_world_tile(state, state->tile_map_state.pad->tile_map_position));
+        if(count > 1) {
+            set_entity_texture(imports, state->tile_map_state.door, "data/textures/door_open.png");
+            state->tile_map_state.door->is_blocking = false;
+        } else {
+            set_entity_texture(imports, state->tile_map_state.door, "data/textures/door_closed.png");
+            state->tile_map_state.door->is_blocking = true;
+        }
+    }
+
+    if(state->tile_map_state.num_goals > 0) { // map is a goals-type
+        int num_complete = 0;
+        for(int i = 0; i < state->tile_map_state.num_goals; i++) {
+            World_Tile *goal = state->tile_map_state.goals[i];
+            if(tile_has_box(goal)) {
+                num_complete++;
+            }
+        }
+
+        if(num_complete == state->tile_map_state.num_goals) {
+            state->current_map++;
+            if(state->current_map >= state->maps.num) {
+                state->current_map = 0;
+            }
+            load_map(imports, state, state->maps[state->current_map]);
+        }
+    } else { // map is an exit-type
+        World_Tile *tile = get_world_tile(state, state->tile_map_state.exit->tile_map_position);
+        if(tile_has_player(tile)) {
+            state->current_map++;
+            if(state->current_map >= state->maps.num) {
+                state->current_map = 0;
+            }
+            load_map(imports, state, state->maps[state->current_map]);
+        }
+    }
 }
 
 int sort_entity_by_z(const void *a, const void *b) {
@@ -395,12 +570,11 @@ GAME_CALLBACK(game_render) {
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    // @hack should put this in Game_State and allocate in game_init
-    static Entity *sorted_entities = (Entity *)arena_alloc(&state->entities_arena, sizeof(Entity) * state->entities.num);
-    memcpy(sorted_entities, state->entities.data, sizeof(Entity) * state->entities.num);
-    qsort(sorted_entities, state->entities.num, sizeof(Entity), sort_entity_by_z);
+    memcpy(state->sorted_entities, state->entities.data, sizeof(Entity) * state->entities.num);
+    qsort(state->sorted_entities, state->entities.num, sizeof(Entity), sort_entity_by_z);
 
     for(int i = 0; i < state->entities.num; i++) {
-        immediate_render_texture(&sorted_entities[i].texture, v2_to_v2i(sorted_entities[i].tile_map_position, 64), sorted_entities[i].colour);
+        immediate_render_texture(&state->sorted_entities[i].texture, 
+            v2_to_v2i(state->sorted_entities[i].tile_map_position, 64) + Vector2(64, 64), state->sorted_entities[i].colour);
     }
 }

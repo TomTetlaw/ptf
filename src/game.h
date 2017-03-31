@@ -1,16 +1,14 @@
 #ifndef __GAME_H__
 #define __GAME_H__
 
-extern Game_Imports *imports;
-extern Game_Memory *memory;
-
 struct Texture {
     int width = 0;
     int height = 0;
     unsigned int api_object = 0;
+    const char *filename = nullptr;
 };
 
-void load_texture(const char *filename, Texture *texture);
+void load_texture(Game_Imports *imports, const char *filename, Texture *texture);
 
 void immediate_render_texture(Texture *texture, Vector2 position, Vector4 colour);
 void immediate_render_line(Vector2 a, Vector2 b, Vector4 colour);
